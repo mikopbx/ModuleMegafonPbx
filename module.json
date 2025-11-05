@@ -8,5 +8,11 @@
     "changelog_enabled": true,
     "create_github_release": true
   },
-  "min_pbx_version": "2020.2.757"
+  "wiki_links": {
+    "ru": {"https://wiki.mikopbx.ru/module-megafon-pbx": "https://docs.mikopbx.com/mikopbx/modules/miko/integraciya-s-megapbx-ot-megafon"},
+    "en": {"https://wiki.mikopbx.ru/module-megafon-pbx": "https://docs.mikopbx.com/mikopbx/v/english/modules/miko/integraciya-s-megapbx-ot-megafon"}
+  },
+  "min_pbx_version": "2020.2.757",
+  "lic_product_id": 272,
+  "lic_feature_id": 67
 }
