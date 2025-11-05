@@ -1,0 +1,54 @@
+<?php
+/**
+ * Copyright (C) MIKO LLC - All Rights Reserved
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ * Written by Nikolay Beketov, 9 2018
+ *
+ */
+namespace Modules\ModuleMegafonPbx\App\Forms;
+
+use MikoPBX\Core\System\Util;
+use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
+use Phalcon\Forms\Form;
+use Phalcon\Forms\Element\Text;
+use Phalcon\Forms\Element\Numeric;
+use Phalcon\Forms\Element\Password;
+use Phalcon\Forms\Element\Check;
+use Phalcon\Forms\Element\TextArea;
+use Phalcon\Forms\Element\Hidden;
+use Phalcon\Forms\Element\Select;
+
+
+class ModuleMegafonPbxForm extends Form
+{
+
+    public function initialize($entity = null, $options = null) :void
+    {
+        $this->add(new Hidden('id', ['value' => $entity->id]));
+        $this->add(new Text('authApiKey'));
+        $this->add(new Text('host'));
+        $this->add(new Text('gap'));
+
+        $arrExtField = [
+            ModuleMegafonPbx::EXTENSION_FIELD_EXT => Util::translate('module_megafon_InternalNumber'),
+            ModuleMegafonPbx::EXTENSION_FIELD_TEL => Util::translate('module_megafon_MobileNumber'),
+        ];
+
+        $extField = new Select(
+            'extField',
+            $arrExtField,
+            [
+                'using'    => [
+                    'id',
+                    'name',
+                ],
+                'useEmpty' => false,
+                'value'    => $entity->extField,
+                'class'    => 'ui selection dropdown library-type-select',
+            ]
+        );
+        $this->add($extField);
+
+    }
+}
