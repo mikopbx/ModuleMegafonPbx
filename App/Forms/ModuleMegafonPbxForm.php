@@ -51,5 +51,21 @@ class ModuleMegafonPbxForm extends Form
         );
         $this->add($extField);
 
+        $arrMatchMode = [
+            ModuleMegafonPbx::USER_MATCH_BY_EXT    => Util::translate('module_megafon_matchByExt'),
+            ModuleMegafonPbx::USER_MATCH_BY_MOBILE => Util::translate('module_megafon_matchByMobile'),
+            ModuleMegafonPbx::USER_MATCH_BY_BOTH   => Util::translate('module_megafon_matchByBoth'),
+        ];
+        $matchMode = new Select(
+            'userMatchMode',
+            $arrMatchMode,
+            [
+                'using'    => ['id', 'name'],
+                'useEmpty' => false,
+                'value'    => $entity->userMatchMode ?: ModuleMegafonPbx::USER_MATCH_BY_EXT,
+                'class'    => 'ui selection dropdown library-type-select',
+            ]
+        );
+        $this->add($matchMode);
     }
 }

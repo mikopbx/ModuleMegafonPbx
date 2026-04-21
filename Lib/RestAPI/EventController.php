@@ -80,7 +80,7 @@ class EventController extends BaseController
         $cmd = $post['cmd'] ?? '';
         switch ($cmd) {
             case 'event':
-                $this->handleEvent($post, $remote);
+                $this->handleEvent($post, $remote, $settings);
                 return;
             case 'history':
                 // Историю звонков и записи разговоров грузит cron-воркер bin/synchCdr.php
@@ -103,8 +103,12 @@ class EventController extends BaseController
      * Обработка cmd=event — реалтайм-уведомления о состоянии звонка.
      * Валидируем, маппим в state, отдаём в 1С через SOAP (если настроено),
      * иначе пишем в лог.
+     *
+     * $settings всегда не-null: вызывающий eventAction уже отбраковал null
+     * через auth_fail (configuredToken==='' → 401). Тип non-nullable
+     * чтобы не маскировать ошибки контракта.
      */
-    private function handleEvent(array $post, string $remote): void
+    private function handleEvent(array $post, string $remote, ModuleMegafonPbx $settings): void
     {
         foreach (['type', 'callid', 'phone', 'user', 'direction'] as $required) {
             if (!isset($post[$required]) || $post[$required] === '') {
@@ -141,12 +145,16 @@ class EventController extends BaseController
             return;
         }
 
-        $userRecord = self::matchUser($usersIndex, $post);
-        if ($userRecord === null) {
-            self::log('event_user_not_matched', $remote, $post);
+        $matchMode  = (string)($settings->userMatchMode ?? ModuleMegafonPbx::USER_MATCH_BY_EXT)
+                      ?: ModuleMegafonPbx::USER_MATCH_BY_EXT;
+        $candidates = self::getMatchCandidates($usersIndex, $post, $matchMode);
+        if (count($candidates) !== 1) {
+            self::log('event_user_not_matched', $remote, $post,
+                "mode=$matchMode, candidates=" . count($candidates));
             $this->sendJson(['status' => 'ok']);
             return;
         }
+        $userRecord = reset($candidates);
 
         $clientPhone   = (string)$post['phone'];
         $employeePhone = (string)($post['telnum'] ?? '');
@@ -327,27 +335,40 @@ class EventController extends BaseController
     }
 
     /**
-     * Сопоставление с пользователем 1С: пробуем три индекса в порядке убывания
-     * специфичности (telnum → user-логин → ext). null = не нашли.
+     * Возвращает массив кандидатов-юзеров 1С для сопоставления сотрудника ВАТС
+     * по выбранному режиму. Возможный размер: 0 (ничего не подошло),
+     * 1 (однозначный матч) или N>1 (конфликт — несколько разных юзеров на одном
+     * номере). Решение что делать с count() принимает вызывающий: handleEvent
+     * берёт юзера только при count==1, а в логе показывает реальное число.
+     *
+     * Индексы — карты вида {ключ => {user_id => userRecord}}, дедупликация
+     * по id уже выполнена в buildUsersIndex().
+     *
+     * @return array<string,array>  карта {user_id => userRecord} (может быть пустой)
      */
-    private static function matchUser(array $idx, array $post): ?array
+    private static function getMatchCandidates(array $idx, array $post, string $mode): array
     {
-        $telnum = (string)($post['telnum'] ?? '');
-        if ($telnum !== '') {
+        $byExt    = function () use ($idx, $post) {
+            $ext = (string)($post['ext'] ?? '');
+            return ($ext !== '' && isset($idx['by_ext'][$ext])) ? $idx['by_ext'][$ext] : [];
+        };
+        $byMobile = function () use ($idx, $post) {
+            $telnum = (string)($post['telnum'] ?? '');
+            if ($telnum === '') return [];
             $key = substr(preg_replace('/\D+/', '', $telnum), -10);
-            if ($key !== '' && isset($idx['by_mobile'][$key])) {
-                return $idx['by_mobile'][$key];
-            }
+            return ($key !== '' && isset($idx['by_mobile'][$key])) ? $idx['by_mobile'][$key] : [];
+        };
+
+        switch ($mode) {
+            case ModuleMegafonPbx::USER_MATCH_BY_MOBILE:
+                return $byMobile();
+            case ModuleMegafonPbx::USER_MATCH_BY_BOTH:
+                $candidates = $byExt();
+                return count($candidates) > 0 ? $candidates : $byMobile();
+            case ModuleMegafonPbx::USER_MATCH_BY_EXT:
+            default:
+                return $byExt();
         }
-        $user = (string)($post['user'] ?? '');
-        if ($user !== '' && isset($idx['by_user'][$user])) {
-            return $idx['by_user'][$user];
-        }
-        $ext = (string)($post['ext'] ?? '');
-        if ($ext !== '' && isset($idx['by_ext'][$ext])) {
-            return $idx['by_ext'][$ext];
-        }
-        return null;
     }
 
     /**
@@ -391,46 +412,149 @@ class EventController extends BaseController
     }
 
     /**
-     * Запрос списка юзеров в 1С (SOAP user_list) с построением 3 индексов:
-     * by_mobile (последние 10 цифр), by_user (login или name), by_ext.
+     * Запрос списка юзеров в 1С (SOAP user_list) с построением 2 индексов:
+     * by_ext (по полю extension) и by_mobile (последние 10 цифр поля mobile).
+     *
+     * Каждая ячейка индекса — карта {user_id => userRecord}, что даёт
+     * автодедупликацию (1С нередко возвращает по одному юзеру несколько строк
+     * с разными mobile) и позволяет выявить настоящие конфликты, когда
+     * один extension/мобильный закреплён за разными людьми.
      *
      * @return array|null  null = SOAP-вызов упал.
+     *                     ['by_ext' => [ext => [id=>u]], 'by_mobile' => [...]]
      */
     private function getUsersFrom1C(array $cti): ?array
     {
         $cached = self::readCache(self::USERS_CACHE_FILE, self::USERS_CACHE_TTL);
-        if (is_array($cached) && isset($cached['by_mobile'])) {
+        if (is_array($cached) && isset($cached['by_ext'])) {
             return $cached;
         }
         $resp = $this->soap1C($cti, 'user_list');
         if (!is_array($resp)) {
             return null;
         }
-        $idx = ['by_mobile' => [], 'by_user' => [], 'by_ext' => []];
-        foreach ($resp as $u) {
-            if (!is_array($u)) {
+        $idx = self::buildUsersIndex($resp);
+        self::writeCache(self::USERS_CACHE_FILE, $idx);
+        return $idx;
+    }
+
+    /**
+     * Собирает индекс юзеров из сырого ответа SOAP user_list.
+     * Вынесено в статический метод чтобы переиспользовать из админ-контроллера
+     * (для подсчёта конфликтов сопоставления в UI).
+     */
+    public static function buildUsersIndex(array $rawUsers): array
+    {
+        $idx = ['by_ext' => [], 'by_mobile' => []];
+        foreach ($rawUsers as $u) {
+            if (!is_array($u) || empty($u['id'])) {
                 continue;
+            }
+            $id = (string)$u['id'];
+            if (!empty($u['extension'])) {
+                $idx['by_ext'][(string)$u['extension']][$id] = $u;
             }
             if (!empty($u['mobile'])) {
                 $key = substr(preg_replace('/\D+/', '', (string)$u['mobile']), -10);
                 if ($key !== '') {
-                    $idx['by_mobile'][$key] = $u;
-                }
-            }
-            if (!empty($u['login'])) {
-                $idx['by_user'][(string)$u['login']] = $u;
-            } elseif (!empty($u['name'])) {
-                $idx['by_user'][(string)$u['name']] = $u;
-            }
-            foreach (['extension', 'internal_number', 'ext'] as $extField) {
-                if (!empty($u[$extField])) {
-                    $idx['by_ext'][(string)$u[$extField]] = $u;
-                    break;
+                    $idx['by_mobile'][$key][$id] = $u;
                 }
             }
         }
-        self::writeCache(self::USERS_CACHE_FILE, $idx);
         return $idx;
+    }
+
+    /**
+     * Получает индекс юзеров 1С для админ-страницы (без кеша и без статики
+     * SOAP-клиента) и считает конфликты — те ext/mobile, на которых висит
+     * >1 уникального юзера. Реализован полностью статически, чтобы безопасно
+     * вызываться из других контроллеров без инстанцирования BaseController.
+     *
+     * @return array{ok:bool, reason?:string, conflicts?:array}
+     */
+    public static function computeMatchConflicts(): array
+    {
+        $ctiClass = '\\Modules\\ModuleCTIClient\\Models\\ModuleCTIClient';
+        if (!class_exists($ctiClass)) {
+            return ['ok' => false, 'reason' => 'cti_unavailable'];
+        }
+        $row = $ctiClass::findFirst();
+        if (!$row) {
+            return ['ok' => false, 'reason' => 'cti_unavailable'];
+        }
+        $cti = $row->toArray();
+        if (empty($cti['server1chost']) || empty($cti['login'])) {
+            return ['ok' => false, 'reason' => 'cti_unavailable'];
+        }
+
+        $resp = self::soap1CUserListStatic($cti);
+        if (!is_array($resp)) {
+            return ['ok' => false, 'reason' => 'soap_failed'];
+        }
+
+        $idx       = self::buildUsersIndex($resp);
+        $conflicts = [];
+        foreach (['by_ext' => 'ext', 'by_mobile' => 'mobile'] as $bucket => $type) {
+            foreach ($idx[$bucket] as $key => $users) {
+                if (count($users) > 1) {
+                    $conflicts[] = [
+                        'type'  => $type,
+                        'key'   => (string)$key,
+                        'users' => array_values($users),
+                    ];
+                }
+            }
+        }
+        return ['ok' => true, 'conflicts' => $conflicts];
+    }
+
+    /**
+     * Облегчённый статический SOAP user_list для админ-страницы:
+     * собственный Guzzle (без статики), без логирования, с reLogin при 400/500.
+     */
+    private static function soap1CUserListStatic(array $cti): ?array
+    {
+        $base = $cti['server1c_scheme'] . '://' . $cti['server1chost'] . ':' . $cti['server1cport']
+              . '/' . $cti['database'] . '/ws/miko_crm_api.1cws';
+        $cookieJar = new FileCookieJar('/tmp/megafon_1c_session_admin.json', true);
+        $client    = new Client([
+            'base_uri'    => $base,
+            'auth'        => [$cti['login'], $cti['secret']],
+            'timeout'     => 10,
+            'http_errors' => false,
+            'cookies'     => $cookieJar,
+        ]);
+        $body = <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/">
+    <soap:Body>
+        <m:user_list xmlns:m="http://wiki.miko.ru/uniphone:crmapi"/>
+    </soap:Body>
+</soap:Envelope>
+XML;
+        $exec = function (bool $reLogin) use ($client, $body, $cookieJar) {
+            $headers = ['Content-Type' => 'text/xml; charset=utf-8'];
+            if ($reLogin) {
+                $cookieJar->clear();
+                $headers['IBSession'] = 'start';
+            }
+            return $client->post('', ['headers' => $headers, 'body' => $body]);
+        };
+        try {
+            $resp = $exec(false);
+            $code = $resp->getStatusCode();
+            if (in_array($code, [400, 500], true)) {
+                $resp = $exec(true);
+                $code = $resp->getStatusCode();
+            }
+            if ($code !== 200) {
+                return null;
+            }
+            $parsed = self::parseSoap((string)$resp->getBody(), 'user_list');
+            return is_array($parsed) ? $parsed : null;
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     private function sendCallEventTo1C(array $cti, array $callData): bool

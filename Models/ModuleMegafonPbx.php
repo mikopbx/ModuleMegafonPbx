@@ -23,6 +23,15 @@ class ModuleMegafonPbx extends ModulesModelsBase
     public const EXTENSION_FIELD_TEL = 'telnum';
 
     /**
+     * Режимы сопоставления сотрудника ВАТС МегаФон с записью пользователя
+     * в 1С (используется EventController при обработке cmd=event для отправки
+     * call_event в 1С через SOAP).
+     */
+    public const USER_MATCH_BY_EXT    = 'ext';     // только по внутреннему номеру (1С.extension == ВАТС.ext)
+    public const USER_MATCH_BY_MOBILE = 'mobile';  // только по мобильному (1С.mobile last10 == ВАТС.telnum last10)
+    public const USER_MATCH_BY_BOTH   = 'both';    // сначала по ext, fallback на mobile
+
+    /**
      * @Primary
      * @Identity
      * @Column(type="integer", nullable=false)
@@ -66,6 +75,14 @@ class ModuleMegafonPbx extends ModulesModelsBase
      * @Column(type="string", nullable=true)
      */
     public $crmToken;
+
+    /**
+     * Режим сопоставления сотрудника ВАТС с пользователем 1С при отправке
+     * cmd=event в 1С. Допустимые значения — константы USER_MATCH_*.
+     *
+     * @Column(type="string", nullable=true, default="ext")
+     */
+    public $userMatchMode = 'ext';
 
     /**
      * TextArea field example
