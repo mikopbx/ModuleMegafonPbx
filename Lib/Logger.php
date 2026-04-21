@@ -50,8 +50,11 @@ class Logger
         $logPath = Directories::getDir(Directories::CORE_LOGS_DIR) . '/' . $this->module_name . '/';
         if (!file_exists($logPath)) {
             Util::mwMkdir($logPath);
-            Util::addRegularWWWRights($logPath);
         }
+        // Права выдаём всегда — если директория была создана CLI под root
+        // (например, крон-воркером), нужно выправить владельца на www, иначе
+        // FPM под www не сможет создавать/ротировать файлы в ней.
+        Util::addRegularWWWRights($logPath);
         $this->logFile = $logPath . $class . '.log';
         $this->initLogger();
     }
@@ -102,24 +105,69 @@ class Logger
 
     public function writeError($data, string $header = ''): void
     {
-        $this->rotate();
-        if ($this->debug) {
-            if (!empty($header)) {
-                $header .= '(' . posix_getpid() . "): ";
-            }
-            $this->logger->error($header . $this->getDecodedString($data));
-        }
+        $this->safeWrite('error', $data, $header);
     }
 
     public function writeInfo($data, string $header = ''): void
     {
-        $this->rotate();
-        if ($this->debug) {
-            if (!empty($header)) {
-                $header .= '(' . posix_getpid() . "): ";
-            }
-            $this->logger->info($header . $this->getDecodedString($data));
+        $this->safeWrite('info', $data, $header);
+    }
+
+    /**
+     * Безопасно пишет строку в лог: ни при каких обстоятельствах не
+     * пробрасывает исключение наружу. Это критично, потому что исключение
+     * из логгера в REST-контроллере ведёт к тому, что MikoPBX автоматически
+     * выставляет модулю disabled=1 (защитная мера ядра) — т.е. один
+     * сбой прав на лог-файл тушит всю интеграцию.
+     *
+     * При ошибке открытия Stream пробуем восстановить logger (reinit с
+     * пересозданием файла и правами www). Если и это не помогает —
+     * падаем в SystemMessages::sysLogMsg: одна короткая строка в syslog
+     * вместо потерянного события + живой модуль.
+     */
+    private function safeWrite(string $level, $data, string $header): void
+    {
+        if (!$this->debug) {
+            return;
         }
+        try {
+            $this->rotate();
+            $message = $this->prefix($header) . $this->getDecodedString($data);
+            $this->logger->$level($message);
+        } catch (\Throwable $e) {
+            // Попытка восстановить: пересоздать файл с корректными правами.
+            try {
+                $this->resetLogFile();
+                $this->initLogger();
+                $message = $this->prefix($header) . $this->getDecodedString($data);
+                $this->logger->$level($message);
+            } catch (\Throwable $e2) {
+                SystemMessages::sysLogMsg(
+                    $this->module_name,
+                    'logger fallback: ' . $e2->getMessage() . ' (orig: ' . $e->getMessage() . ')'
+                );
+            }
+        }
+    }
+
+    /**
+     * Удалить битый лог-файл (с «неправильным» владельцем/правами), если
+     * unlink доступен текущему пользователю. Дальше initLogger() создаст
+     * пустой файл и выдаст www-права.
+     */
+    private function resetLogFile(): void
+    {
+        if (file_exists($this->logFile) && is_writable(dirname($this->logFile))) {
+            @unlink($this->logFile);
+        }
+    }
+
+    private function prefix(string $header): string
+    {
+        if (empty($header)) {
+            return '';
+        }
+        return $header . '(' . posix_getpid() . '): ';
     }
 
     private function getDecodedString($data): string
