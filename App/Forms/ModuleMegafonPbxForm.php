@@ -29,6 +29,7 @@ class ModuleMegafonPbxForm extends Form
         $this->add(new Text('authApiKey'));
         $this->add(new Text('host'));
         $this->add(new Text('gap'));
+        $this->add(new Text('crmToken'));
 
         $arrExtField = [
             ModuleMegafonPbx::EXTENSION_FIELD_EXT => Util::translate('module_megafon_InternalNumber'),

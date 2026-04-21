@@ -102,7 +102,7 @@ foreach ($fsData as $index => $cdr){
                 'headers' => [
                     'X-API-KEY' => $settings->authApiKey,
                 ],
-                'timeout' => 5, 'connect_timeout' => 5, 'read_timeout' => 5
+                'timeout' => 30, 'connect_timeout' => 5, 'read_timeout' => 30
             ]);
             if($response->getStatusCode() === 200){
                 file_put_contents($filename, $response->getBody()->getContents());

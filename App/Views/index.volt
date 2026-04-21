@@ -17,5 +17,9 @@
         <label>{{ t._('module_megafon_FieldNumberTitle') }}</label>
         {{ form.render('extField') }}
     </div>
+    <div class="ten wide field disability">
+        <label>{{ t._('module_megafon_crmToken') }}</label>
+        {{ form.render('crmToken') }}
+    </div>
     {{ partial("partials/submitbutton",['indexurl':'pbx-extension-modules/index/']) }}
 </form>

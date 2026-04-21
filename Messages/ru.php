@@ -16,6 +16,7 @@ return [
     'module_megafon_pbxAuthApiKey'  => 'Ключ для авторизации API',
     'module_megafon_pbxhost'        => 'Адрес АТС Мегафон',
     'module_megafon_gap'            => 'Сдвиг времени',
+    'module_megafon_crmToken'         => 'CRM-токен (из ЛК ВАТС МегаФон, для приёма событий звонков)',
     'module_megafon_FieldNumberTitle' => 'Какой номер отображать в истории',
     'module_megafon_InternalNumber' => 'Внутренний номер сотрудника MegaPBX',
     'module_megafon_MobileNumber'   => 'Мобильный номер сотрудника MegaPBX',

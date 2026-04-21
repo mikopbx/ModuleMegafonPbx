@@ -59,7 +59,13 @@ class ModuleMegafonPbx extends ModulesModelsBase
      */
     public $extField = 'ext';
 
-
+    /**
+     * Токен, который ВАТС МегаФон передаёт в теле POST /pbxcore/mega-pbx/event
+     * как параметр `crm_token` для аутентификации входящих событий звонков.
+     *
+     * @Column(type="string", nullable=true)
+     */
+    public $crmToken;
 
     /**
      * TextArea field example

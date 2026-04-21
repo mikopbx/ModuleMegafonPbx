@@ -13,6 +13,7 @@ return [
     'BreadcrumbModuleMegafonPbx'=> 'Template module',
     'SubHeaderModuleMegafonPbx' => 'Example to create own modules',
     'module_template_AddNewRecord'  => 'Add new',
+    'module_megafon_crmToken'       => 'CRM token (from MegaPBX cabinet, used to authenticate incoming call events)',
     'module_megafon_pbxTextFieldLabel'        => 'Text field example',
     'module_megafon_pbxTextAreaFieldLabel'    => 'TextArea field example',
     'module_megafon_pbxPasswordFieldLabel'    => 'Password field example',
