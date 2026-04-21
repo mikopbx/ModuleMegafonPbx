@@ -45,26 +45,38 @@ if(empty($settings->offset)){
 $endTime   = date("Ymd\THis\Z");
 
 $client = new Client();
-$response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/history/json', [
-    'query' => [
-        'start' => $startTime,
-        'end'   => $endTime,
-    ],
-    'headers' => [
-        'X-API-KEY' => $settings->authApiKey,
-    ],
-    'timeout' => 5, 'connect_timeout' => 5, 'read_timeout' => 5
-]);
+try {
+    $response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/history/json', [
+        'query' => [
+            'start' => $startTime,
+            'end'   => $endTime,
+        ],
+        'headers' => [
+            'X-API-KEY' => $settings->authApiKey,
+        ],
+        'timeout' => 30, 'connect_timeout' => 10, 'read_timeout' => 30
+    ]);
+} catch (\Throwable $e) {
+    // Тихо выходим — крон попробует через минуту. Без try/catch здесь
+    // глобальный WhoopsErrorHandler писал в syslog 15-строчный stack trace.
+    Util::sysLogMsg('MegafonPBX', 'history fetch failed: '.$e->getMessage());
+    exit(1);
+}
 $fsData = json_decode($response->getBody(), true);
 if(empty($fsData)){
     exit(0);
 }
-$response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/users', [
-    'headers' => [
-        'X-API-KEY' => $settings->authApiKey,
-    ],
-    'timeout' => 5, 'connect_timeout' => 5, 'read_timeout' => 5
-]);
+try {
+    $response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/users', [
+        'headers' => [
+            'X-API-KEY' => $settings->authApiKey,
+        ],
+        'timeout' => 15, 'connect_timeout' => 10, 'read_timeout' => 15
+    ]);
+} catch (\Throwable $e) {
+    Util::sysLogMsg('MegafonPBX', 'users fetch failed: '.$e->getMessage());
+    exit(1);
+}
 $usersPbx = json_decode($response->getBody(), true);
 $users = [];
 foreach ($usersPbx['items'] as $user){
