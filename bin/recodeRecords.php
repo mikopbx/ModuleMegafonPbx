@@ -110,6 +110,7 @@ $seen        = [];   // recordingfile => true (дедуп)
 $plan        = [];   // [path, bitrate]
 $skipMissing = 0;
 $skipOk      = 0;
+$skipProbe   = []; // файлы, которые есть на диске, но ffprobe/sox не вернули bit_rate
 $scanned     = 0;
 $batchNum    = 0;
 
@@ -154,13 +155,24 @@ while (true) {
         }
         $seen[$path] = true;
 
+        // Сбрасываем stat-кэш: ModuleCleanRecords и подобные могут удалять
+        // файлы фоном, между сканированием CDR и моментом probe.
+        clearstatcache(true, $path);
         if (!is_file($path)) {
             $skipMissing++;
             continue;
         }
         $bitrate = probeBitrate($path, $ffprobe, $soxBin);
         if ($bitrate === null) {
-            echo "  SKIP (probe failed): $path\n";
+            // Повторная проверка после probe — частый кейс: файл исчез
+            // именно в этот момент. Тогда это не «probe failed», а
+            // «удалили под нами» — учитываем как missing без шума в логе.
+            clearstatcache(true, $path);
+            if (!is_file($path)) {
+                $skipMissing++;
+            } else {
+                $skipProbe[] = $path;
+            }
             continue;
         }
         if ($bitrate > $maxBitrate) {
@@ -187,7 +199,16 @@ echo "CDR rows scanned:                  $scanned\n";
 echo "Unique fs-megapbx recordings seen: " . count($seen) . "\n";
 echo "Skip — file missing on disk:       $skipMissing\n";
 echo "Skip — bitrate > $maxBitrate (already OK): $skipOk\n";
+echo "Skip — probe failed (file present but unreadable): " . count($skipProbe) . "\n";
 echo "Need recode:                       " . count($plan) . "\n\n";
+
+if (!empty($skipProbe)) {
+    echo "Probe-failed files (first 10) — broken or non-MP3 content, recommend manual check:\n";
+    foreach (array_slice($skipProbe, 0, 10) as $p) {
+        echo "  $p\n";
+    }
+    echo "\n";
+}
 
 if (empty($plan)) {
     echo "Nothing to do.\n";

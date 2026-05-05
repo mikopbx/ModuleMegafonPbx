@@ -56,10 +56,32 @@ class AudioRecodeHelper
      */
     public static function isTranscoderAvailable(): bool
     {
-        if (Util::which('ffmpeg') !== '') {
+        if (self::resolveBin('ffmpeg') !== '') {
             return true;
         }
-        return Util::which('sox') !== '' && Util::which('lame') !== '';
+        return self::resolveBin('sox') !== '' && self::resolveBin('lame') !== '';
+    }
+
+    /**
+     * Найти полный путь к бинарю, либо вернуть ''. Защита от ситуации,
+     * когда `Util::which()` отдаёт имя без пути (а PATH в `sh` отличается
+     * от PATH у php.backend) — наблюдалось на проде: rc=127 «sh: ffmpeg:
+     * not found» при наличии бинаря в системе.
+     */
+    private static function resolveBin(string $name): string
+    {
+        $candidate = Util::which($name);
+        if ($candidate !== '' && strpos($candidate, '/') !== false && is_executable($candidate)) {
+            return $candidate;
+        }
+        // fallback: типовые места установки в MikoPBX/Linux
+        foreach (['/usr/bin/', '/usr/local/bin/', '/sbin/', '/usr/sbin/'] as $dir) {
+            $p = $dir . $name;
+            if (is_executable($p)) {
+                return $p;
+            }
+        }
+        return '';
     }
 
     /**
@@ -76,9 +98,9 @@ class AudioRecodeHelper
             return false;
         }
 
-        $ffmpeg = Util::which('ffmpeg');
-        $sox    = Util::which('sox');
-        $lame   = Util::which('lame');
+        $ffmpeg = self::resolveBin('ffmpeg');
+        $sox    = self::resolveBin('sox');
+        $lame   = self::resolveBin('lame');
 
         if (empty($ffmpeg) && (empty($sox) || empty($lame))) {
             if (!self::$missingTranscoderLogged) {
