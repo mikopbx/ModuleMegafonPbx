@@ -17,6 +17,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 use GuzzleHttp\Client;
+use Modules\ModuleMegafonPbx\Lib\AudioRecodeHelper;
 use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
 use MikoPBX\Core\System\Storage;
 use MikoPBX\Core\System\Util;
@@ -118,6 +119,19 @@ foreach ($fsData as $index => $cdr){
             ]);
             if($response->getStatusCode() === 200){
                 file_put_contents($filename, $response->getBody()->getContents());
+                // По умолчанию (null/'1') — перекодируем; '0' — явное отключение
+                // через UI. Иначе сразу после обновления модуля на старых
+                // инсталляциях перекодирование выключилось бы, т.к. у уже
+                // существующей строки настроек поля ещё нет.
+                if ($settings->recodeRecording !== '0') {
+                    if (!AudioRecodeHelper::recodeToMonoMp3($filename)) {
+                        Util::sysLogMsg(
+                            'MegafonPBX',
+                            "recode skipped/failed for $filename (uniqueid=fs-megapbx-"
+                            . $startDate->getTimestamp() . '.' . $cdr['uid'] . ')'
+                        );
+                    }
+                }
             }else{
                 $filename = '';
             }

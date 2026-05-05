@@ -85,6 +85,19 @@ class ModuleMegafonPbx extends ModulesModelsBase
     public $userMatchMode = 'ext';
 
     /**
+     * Перекодировать ли каждую скачанную из CRM API ВАТС МегаФон запись в
+     * стандартный mono 8 кГц 32 kbps. Оригинал МегаФон отдаёт CBR 16 kbps,
+     * который не парсится async-эндпоинтом STT-сервиса (`speech.mikolab.ru`)
+     * и отбивается ошибкой `Unexpected EOF`. Перекодирование выполняется
+     * через ffmpeg или sox+lame (см. `Lib/AudioRecodeHelper`).
+     *
+     * Значения: '1' — перекодировать (по умолчанию), '0' — оставить как есть.
+     *
+     * @Column(type="string", length=1, nullable=true, default="1")
+     */
+    public $recodeRecording = '1';
+
+    /**
      * TextArea field example
      *
      * @Column(type="string", nullable=true)

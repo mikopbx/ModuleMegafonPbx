@@ -143,8 +143,9 @@ class ModuleMegafonPbxController extends BaseController
                     break;
                 case 'checkbox_field':
                 case 'toggle_field':
+                case 'recodeRecording':
                     if (array_key_exists($key, $data)) {
-                        $record->$key = ($data[$key] === 'on') ? '1' : '0';
+                        $record->$key = ($data[$key] === 'on' || $data[$key] === '1') ? '1' : '0';
                     } else {
                         $record->$key = '0';
                     }

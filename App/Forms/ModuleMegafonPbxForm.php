@@ -67,5 +67,16 @@ class ModuleMegafonPbxForm extends Form
             ]
         );
         $this->add($matchMode);
+
+        // По умолчанию (включая null для уже существующих строк настроек,
+        // где колонка добавилась миграцией позже) считаем перекодирование
+        // включённым. Явное '0' — пользователь снял галочку в UI.
+        $recodeAttrs = ['value' => '1'];
+        if ($entity->recodeRecording !== '0') {
+            $recodeAttrs['checked'] = 'checked';
+        }
+        $recode = new Check('recodeRecording');
+        $recode->setAttributes($recodeAttrs);
+        $this->add($recode);
     }
 }

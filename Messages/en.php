@@ -24,6 +24,8 @@ return [
     'module_megafon_matchConflictsByMobile' => 'By mobile number',
     'module_megafon_matchConflictsNone'  => 'No conflicts — every user maps unambiguously.',
     'module_megafon_matchConflictsCtiUnavailable' => 'Cannot verify: ModuleCTIClient is not installed or configured.',
+    'module_megafon_recodeRecordingLabel' => 'Re-encode downloaded recordings to mono 32 kbps',
+    'module_megafon_recodeRecordingHint'  => 'MegaPBX serves MP3 at 16 kbps — such files are rejected by the async endpoint of the STT service. Re-encoding (via ffmpeg or sox+lame) makes them compatible. File size roughly doubles.',
     'module_megafon_pbxTextFieldLabel'        => 'Text field example',
     'module_megafon_pbxTextAreaFieldLabel'    => 'TextArea field example',
     'module_megafon_pbxPasswordFieldLabel'    => 'Password field example',

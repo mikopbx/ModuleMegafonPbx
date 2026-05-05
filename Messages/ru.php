@@ -27,6 +27,8 @@ return [
     'module_megafon_matchConflictsByMobile' => 'По мобильному номеру',
     'module_megafon_matchConflictsNone'  => 'Конфликтов нет — сопоставление работает однозначно.',
     'module_megafon_matchConflictsCtiUnavailable' => 'Не удалось проверить: ModuleCTIClient не установлен или не настроен.',
+    'module_megafon_recodeRecordingLabel' => 'Перекодировать загруженные записи в mono 32 kbps',
+    'module_megafon_recodeRecordingHint'  => 'ВАТС МегаФон отдаёт MP3 в 16 kbps — такие файлы не парсятся async-эндпоинтом сервиса распознавания речи. Перекодирование (через ffmpeg или sox+lame) делает их совместимыми. Размер записи увеличивается примерно вдвое.',
     'module_megafon_FieldNumberTitle' => 'Какой номер отображать в истории',
     'module_megafon_InternalNumber' => 'Внутренний номер сотрудника MegaPBX',
     'module_megafon_MobileNumber'   => 'Мобильный номер сотрудника MegaPBX',

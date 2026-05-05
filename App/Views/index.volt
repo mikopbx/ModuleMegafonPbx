@@ -25,6 +25,15 @@
         <label>{{ t._('module_megafon_userMatchMode') }}</label>
         {{ form.render('userMatchMode') }}
     </div>
+    <div class="ten wide field">
+        <div class="ui toggle checkbox">
+            {{ form.render('recodeRecording') }}
+            <label>{{ t._('module_megafon_recodeRecordingLabel') }}</label>
+        </div>
+        <div class="ui small message" style="margin-top:.5em;">
+            {{ t._('module_megafon_recodeRecordingHint') }}
+        </div>
+    </div>
 
     <h4 class="ui dividing header">{{ t._('module_megafon_matchConflictsTitle') }}</h4>
     {% if matchConflicts['ok'] is not defined or not matchConflicts['ok'] %}
