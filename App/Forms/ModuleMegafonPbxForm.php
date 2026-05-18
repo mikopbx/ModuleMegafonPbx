@@ -81,7 +81,7 @@ class ModuleMegafonPbxForm extends Form
 
         $this->add(new TextArea('excludedNumbers', [
             'rows'        => 5,
-            'value'       => $entity->excludedNumbers,
+            'value'       => (string)$entity->excludedNumbers,
             'placeholder' => "79194071111\n+7 495 123-45-67",
         ]));
     }
