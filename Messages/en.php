@@ -26,6 +26,8 @@ return [
     'module_megafon_matchConflictsCtiUnavailable' => 'Cannot verify: ModuleCTIClient is not installed or configured.',
     'module_megafon_recodeRecordingLabel' => 'Re-encode downloaded recordings to mono 32 kbps',
     'module_megafon_recodeRecordingHint'  => 'MegaPBX serves MP3 at 16 kbps — such files are rejected by the async endpoint of the STT service. Re-encoding (via ffmpeg or sox+lame) makes them compatible. File size roughly doubles.',
+    'module_megafon_excludedNumbersLabel' => 'Excluded numbers (do not import)',
+    'module_megafon_excludedNumbersHint'  => 'Calls involving any of the listed numbers will NOT be imported from MegaPBX into MikoPBX CDR. One number per line (commas and semicolons also work). Format is free-form — comparison uses the last 10 digits, so 79194071111, +7 919 407-11-11 and 8 (919) 407-11-11 are equivalent.',
     'module_megafon_pbxTextFieldLabel'        => 'Text field example',
     'module_megafon_pbxTextAreaFieldLabel'    => 'TextArea field example',
     'module_megafon_pbxPasswordFieldLabel'    => 'Password field example',

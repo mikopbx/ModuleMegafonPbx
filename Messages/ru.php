@@ -29,6 +29,8 @@ return [
     'module_megafon_matchConflictsCtiUnavailable' => 'Не удалось проверить: ModuleCTIClient не установлен или не настроен.',
     'module_megafon_recodeRecordingLabel' => 'Перекодировать загруженные записи в mono 32 kbps',
     'module_megafon_recodeRecordingHint'  => 'ВАТС МегаФон отдаёт MP3 в 16 kbps — такие файлы не парсятся async-эндпоинтом сервиса распознавания речи. Перекодирование (через ffmpeg или sox+lame) делает их совместимыми. Размер записи увеличивается примерно вдвое.',
+    'module_megafon_excludedNumbersLabel' => 'Исключённые номера (не импортировать)',
+    'module_megafon_excludedNumbersHint'  => 'Звонки, в которых участвует любой из перечисленных номеров, не будут импортированы из ВАТС в CDR MikoPBX. По одному номеру в строке (можно также через запятую или точку с запятой). Формат произвольный — сравнение идёт по последним 10 цифрам, так что 79194071111, +7 919 407-11-11 и 8 (919) 407-11-11 эквивалентны.',
     'module_megafon_FieldNumberTitle' => 'Какой номер отображать в истории',
     'module_megafon_InternalNumber' => 'Внутренний номер сотрудника MegaPBX',
     'module_megafon_MobileNumber'   => 'Мобильный номер сотрудника MegaPBX',

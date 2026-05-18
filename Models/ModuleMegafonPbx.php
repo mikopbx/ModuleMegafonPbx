@@ -85,6 +85,15 @@ class ModuleMegafonPbx extends ModulesModelsBase
     public $userMatchMode = 'ext';
 
     /**
+     * Список номеров, звонки по которым не должны импортироваться из ВАТС
+     * (один номер на строку, разделители \n , ;). Сравнение по последним
+     * 10 цифрам — формат записи произвольный.
+     *
+     * @Column(type="string", nullable=true)
+     */
+    public $excludedNumbers;
+
+    /**
      * Перекодировать ли каждую скачанную из CRM API ВАТС МегаФон запись в
      * стандартный mono 8 кГц 32 kbps. Оригинал МегаФон отдаёт CBR 16 kbps,
      * который не парсится async-эндпоинтом STT-сервиса (`speech.mikolab.ru`)

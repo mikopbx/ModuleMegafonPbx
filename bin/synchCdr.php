@@ -91,6 +91,20 @@ $cdrData = [
 
 $haveError = false;
 
+// Список номеров-исключений: сравниваем по последним 10 цифрам, поэтому
+// формат записи (с +7, 8, скобками и пробелами) не важен. Разделители —
+// пробелы/табы/переводы строк, запятая, точка с запятой.
+$excluded = [];
+foreach (preg_split('/[\s,;]+/', (string)$settings->excludedNumbers) as $raw) {
+    $digits = preg_replace('/\D+/', '', $raw);
+    if (strlen($digits) >= 10) {
+        $excluded[substr($digits, -10)] = true;
+    }
+}
+$last10 = static function ($n) {
+    return substr(preg_replace('/\D+/', '', (string)$n), -10);
+};
+
 $clientBeanstalk  = new BeanstalkClient(WorkerCallEvents::class);
 foreach ($fsData as $index => $cdr){
     if($cdr['type'] === 'out'){
@@ -103,6 +117,9 @@ foreach ($fsData as $index => $cdr){
         $dst = $users[$cdr['user']];
         $dst_chan = 'PJSIP/'.$dst.'-'.$cdr['uid'];
         $src_chan = 'PJSIP/megapbx-'.$cdr['uid'];
+    }
+    if ($excluded && (isset($excluded[$last10($src)]) || isset($excluded[$last10($dst)]))) {
+        continue;
     }
     $duration = (int)$cdr['duration'] + (int)$cdr['wait'];
     $startDate  = (new DateTime($cdr['start']))->modify($settings->gap.' hour');

@@ -78,5 +78,11 @@ class ModuleMegafonPbxForm extends Form
         $recode = new Check('recodeRecording');
         $recode->setAttributes($recodeAttrs);
         $this->add($recode);
+
+        $this->add(new TextArea('excludedNumbers', [
+            'rows'        => 5,
+            'value'       => $entity->excludedNumbers,
+            'placeholder' => "79194071111\n+7 495 123-45-67",
+        ]));
     }
 }

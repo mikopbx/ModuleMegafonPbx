@@ -35,6 +35,14 @@
         </div>
     </div>
 
+    <div class="ten wide field">
+        <label>{{ t._('module_megafon_excludedNumbersLabel') }}</label>
+        {{ form.render('excludedNumbers') }}
+        <div class="ui small message" style="margin-top:.5em;">
+            {{ t._('module_megafon_excludedNumbersHint') }}
+        </div>
+    </div>
+
     <h4 class="ui dividing header">{{ t._('module_megafon_matchConflictsTitle') }}</h4>
     {% if matchConflicts['ok'] is not defined or not matchConflicts['ok'] %}
         <div class="ui small warning message">
