@@ -11,6 +11,7 @@ use MikoPBX\Common\Models\CallQueues;
 use MikoPBX\Common\Models\Extensions;
 use MikoPBX\Modules\PbxExtensionUtils;
 use Modules\ModuleMegafonPbx\App\Forms\ModuleMegafonPbxForm;
+use Modules\ModuleMegafonPbx\Lib\RestAPI\EventController;
 use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
 use MikoPBX\Common\Models\Providers;
 use Modules\ModuleMegafonPbx\Models\PhoneBook;
@@ -119,6 +120,10 @@ class ModuleMegafonPbxController extends BaseController
         // Список выбора очередей.
         $this->view->queues = CallQueues::find(['columns' => ['id', 'name']]);
         $this->view->users  = Extensions::find(["type = 'SIP'", 'columns' => ['number', 'callerid']]);
+
+        // Конфликты сопоставления юзеров ВАТС → 1С (один extension/мобильный
+        // указали несколько разных пользователей в 1С).
+        $this->view->matchConflicts = EventController::computeMatchConflicts();
     }
 
     /**
@@ -138,8 +143,9 @@ class ModuleMegafonPbxController extends BaseController
                     break;
                 case 'checkbox_field':
                 case 'toggle_field':
+                case 'recodeRecording':
                     if (array_key_exists($key, $data)) {
-                        $record->$key = ($data[$key] === 'on') ? '1' : '0';
+                        $record->$key = ($data[$key] === 'on' || $data[$key] === '1') ? '1' : '0';
                     } else {
                         $record->$key = '0';
                     }

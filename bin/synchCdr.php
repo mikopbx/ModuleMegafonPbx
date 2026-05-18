@@ -17,6 +17,7 @@
  * If not, see <https://www.gnu.org/licenses/>.
  */
 use GuzzleHttp\Client;
+use Modules\ModuleMegafonPbx\Lib\AudioRecodeHelper;
 use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
 use MikoPBX\Core\System\Storage;
 use MikoPBX\Core\System\Util;
@@ -45,26 +46,38 @@ if(empty($settings->offset)){
 $endTime   = date("Ymd\THis\Z");
 
 $client = new Client();
-$response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/history/json', [
-    'query' => [
-        'start' => $startTime,
-        'end'   => $endTime,
-    ],
-    'headers' => [
-        'X-API-KEY' => $settings->authApiKey,
-    ],
-    'timeout' => 5, 'connect_timeout' => 5, 'read_timeout' => 5
-]);
+try {
+    $response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/history/json', [
+        'query' => [
+            'start' => $startTime,
+            'end'   => $endTime,
+        ],
+        'headers' => [
+            'X-API-KEY' => $settings->authApiKey,
+        ],
+        'timeout' => 30, 'connect_timeout' => 10, 'read_timeout' => 30
+    ]);
+} catch (\Throwable $e) {
+    // Тихо выходим — крон попробует через минуту. Без try/catch здесь
+    // глобальный WhoopsErrorHandler писал в syslog 15-строчный stack trace.
+    Util::sysLogMsg('MegafonPBX', 'history fetch failed: '.$e->getMessage());
+    exit(1);
+}
 $fsData = json_decode($response->getBody(), true);
 if(empty($fsData)){
     exit(0);
 }
-$response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/users', [
-    'headers' => [
-        'X-API-KEY' => $settings->authApiKey,
-    ],
-    'timeout' => 5, 'connect_timeout' => 5, 'read_timeout' => 5
-]);
+try {
+    $response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/users', [
+        'headers' => [
+            'X-API-KEY' => $settings->authApiKey,
+        ],
+        'timeout' => 15, 'connect_timeout' => 10, 'read_timeout' => 15
+    ]);
+} catch (\Throwable $e) {
+    Util::sysLogMsg('MegafonPBX', 'users fetch failed: '.$e->getMessage());
+    exit(1);
+}
 $usersPbx = json_decode($response->getBody(), true);
 $users = [];
 foreach ($usersPbx['items'] as $user){
@@ -77,6 +90,22 @@ $cdrData = [
 ];
 
 $haveError = false;
+
+// Список номеров-исключений: сравниваем по последним 10 цифрам, поэтому
+// формат записи (с +7, 8, скобками и пробелами внутри номера) не важен.
+// Разделители между номерами — только перевод строки, запятая, точка с
+// запятой; пробел разделителем не считаем, иначе "8 (919) 407-11-11"
+// сломается на 3 коротких токена и не попадёт в фильтр.
+$excluded = [];
+foreach (preg_split('/[\r\n,;]+/', (string)$settings->excludedNumbers) as $raw) {
+    $digits = preg_replace('/\D+/', '', $raw);
+    if (strlen($digits) >= 10) {
+        $excluded[substr($digits, -10)] = true;
+    }
+}
+$last10 = static function ($n) {
+    return substr(preg_replace('/\D+/', '', (string)$n), -10);
+};
 
 $clientBeanstalk  = new BeanstalkClient(WorkerCallEvents::class);
 foreach ($fsData as $index => $cdr){
@@ -91,6 +120,9 @@ foreach ($fsData as $index => $cdr){
         $dst_chan = 'PJSIP/'.$dst.'-'.$cdr['uid'];
         $src_chan = 'PJSIP/megapbx-'.$cdr['uid'];
     }
+    if ($excluded && (isset($excluded[$last10($src)]) || isset($excluded[$last10($dst)]))) {
+        continue;
+    }
     $duration = (int)$cdr['duration'] + (int)$cdr['wait'];
     $startDate  = (new DateTime($cdr['start']))->modify($settings->gap.' hour');
 
@@ -102,10 +134,23 @@ foreach ($fsData as $index => $cdr){
                 'headers' => [
                     'X-API-KEY' => $settings->authApiKey,
                 ],
-                'timeout' => 5, 'connect_timeout' => 5, 'read_timeout' => 5
+                'timeout' => 30, 'connect_timeout' => 5, 'read_timeout' => 30
             ]);
             if($response->getStatusCode() === 200){
                 file_put_contents($filename, $response->getBody()->getContents());
+                // По умолчанию (null/'1') — перекодируем; '0' — явное отключение
+                // через UI. Иначе сразу после обновления модуля на старых
+                // инсталляциях перекодирование выключилось бы, т.к. у уже
+                // существующей строки настроек поля ещё нет.
+                if ($settings->recodeRecording !== '0') {
+                    if (!AudioRecodeHelper::recodeToMonoMp3($filename)) {
+                        Util::sysLogMsg(
+                            'MegafonPBX',
+                            "recode skipped/failed for $filename (uniqueid=fs-megapbx-"
+                            . $startDate->getTimestamp() . '.' . $cdr['uid'] . ')'
+                        );
+                    }
+                }
             }else{
                 $filename = '';
             }

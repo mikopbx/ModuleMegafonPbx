@@ -8,6 +8,8 @@
 
 namespace Modules\ModuleMegafonPbx\Setup;
 
+use MikoPBX\Core\System\Directories;
+use MikoPBX\Core\System\Util;
 use MikoPBX\Modules\Setup\PbxExtensionSetupBase;
 
 
@@ -57,12 +59,25 @@ class PbxExtensionSetup extends PbxExtensionSetupBase
     }
 
     /**
-     * Create folders on PBX system and apply rights
+     * Create folders on PBX system and apply rights.
+     *
+     * Предварительно создаём директорию лога EventController и выдаём ей
+     * права www:www. Инсталлятор WorkerModuleInstaller запускается под root,
+     * поэтому именно здесь мы гарантируем корректные владение/права — иначе
+     * при первом вызове Logger из CLI под root директория создавалась бы
+     * как root:root, и последующий вызов из FPM под www падал бы с
+     * "Permission denied" при file_put_contents (см. issue на клиенте).
      *
      * @return bool result of installation
      */
     public function installFiles(): bool
     {
+        $logDir = Directories::getDir(Directories::CORE_LOGS_DIR) . '/' . $this->moduleUniqueID;
+        if (!file_exists($logDir)) {
+            Util::mwMkdir($logDir);
+        }
+        Util::addRegularWWWRights($logDir);
+
         return parent::installFiles();
     }
 

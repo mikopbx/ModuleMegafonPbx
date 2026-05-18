@@ -23,6 +23,15 @@ class ModuleMegafonPbx extends ModulesModelsBase
     public const EXTENSION_FIELD_TEL = 'telnum';
 
     /**
+     * Режимы сопоставления сотрудника ВАТС МегаФон с записью пользователя
+     * в 1С (используется EventController при обработке cmd=event для отправки
+     * call_event в 1С через SOAP).
+     */
+    public const USER_MATCH_BY_EXT    = 'ext';     // только по внутреннему номеру (1С.extension == ВАТС.ext)
+    public const USER_MATCH_BY_MOBILE = 'mobile';  // только по мобильному (1С.mobile last10 == ВАТС.telnum last10)
+    public const USER_MATCH_BY_BOTH   = 'both';    // сначала по ext, fallback на mobile
+
+    /**
      * @Primary
      * @Identity
      * @Column(type="integer", nullable=false)
@@ -59,7 +68,43 @@ class ModuleMegafonPbx extends ModulesModelsBase
      */
     public $extField = 'ext';
 
+    /**
+     * Токен, который ВАТС МегаФон передаёт в теле POST /pbxcore/mega-pbx/event
+     * как параметр `crm_token` для аутентификации входящих событий звонков.
+     *
+     * @Column(type="string", nullable=true)
+     */
+    public $crmToken;
 
+    /**
+     * Режим сопоставления сотрудника ВАТС с пользователем 1С при отправке
+     * cmd=event в 1С. Допустимые значения — константы USER_MATCH_*.
+     *
+     * @Column(type="string", nullable=true, default="ext")
+     */
+    public $userMatchMode = 'ext';
+
+    /**
+     * Список номеров, звонки по которым не должны импортироваться из ВАТС
+     * (один номер на строку, разделители \n , ;). Сравнение по последним
+     * 10 цифрам — формат записи произвольный.
+     *
+     * @Column(type="string", nullable=true)
+     */
+    public $excludedNumbers;
+
+    /**
+     * Перекодировать ли каждую скачанную из CRM API ВАТС МегаФон запись в
+     * стандартный mono 8 кГц 32 kbps. Оригинал МегаФон отдаёт CBR 16 kbps,
+     * который не парсится async-эндпоинтом STT-сервиса (`speech.mikolab.ru`)
+     * и отбивается ошибкой `Unexpected EOF`. Перекодирование выполняется
+     * через ffmpeg или sox+lame (см. `Lib/AudioRecodeHelper`).
+     *
+     * Значения: '1' — перекодировать (по умолчанию), '0' — оставить как есть.
+     *
+     * @Column(type="string", length=1, nullable=true, default="1")
+     */
+    public $recodeRecording = '1';
 
     /**
      * TextArea field example

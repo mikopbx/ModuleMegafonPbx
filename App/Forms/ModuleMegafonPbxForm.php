@@ -29,6 +29,7 @@ class ModuleMegafonPbxForm extends Form
         $this->add(new Text('authApiKey'));
         $this->add(new Text('host'));
         $this->add(new Text('gap'));
+        $this->add(new Text('crmToken'));
 
         $arrExtField = [
             ModuleMegafonPbx::EXTENSION_FIELD_EXT => Util::translate('module_megafon_InternalNumber'),
@@ -50,5 +51,38 @@ class ModuleMegafonPbxForm extends Form
         );
         $this->add($extField);
 
+        $arrMatchMode = [
+            ModuleMegafonPbx::USER_MATCH_BY_EXT    => Util::translate('module_megafon_matchByExt'),
+            ModuleMegafonPbx::USER_MATCH_BY_MOBILE => Util::translate('module_megafon_matchByMobile'),
+            ModuleMegafonPbx::USER_MATCH_BY_BOTH   => Util::translate('module_megafon_matchByBoth'),
+        ];
+        $matchMode = new Select(
+            'userMatchMode',
+            $arrMatchMode,
+            [
+                'using'    => ['id', 'name'],
+                'useEmpty' => false,
+                'value'    => $entity->userMatchMode ?: ModuleMegafonPbx::USER_MATCH_BY_EXT,
+                'class'    => 'ui selection dropdown library-type-select',
+            ]
+        );
+        $this->add($matchMode);
+
+        // По умолчанию (включая null для уже существующих строк настроек,
+        // где колонка добавилась миграцией позже) считаем перекодирование
+        // включённым. Явное '0' — пользователь снял галочку в UI.
+        $recodeAttrs = ['value' => '1'];
+        if ($entity->recodeRecording !== '0') {
+            $recodeAttrs['checked'] = 'checked';
+        }
+        $recode = new Check('recodeRecording');
+        $recode->setAttributes($recodeAttrs);
+        $this->add($recode);
+
+        $this->add(new TextArea('excludedNumbers', [
+            'rows'        => 5,
+            'value'       => (string)$entity->excludedNumbers,
+            'placeholder' => "79194071111\n+7 495 123-45-67",
+        ]));
     }
 }
