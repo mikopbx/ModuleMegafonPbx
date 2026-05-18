@@ -121,6 +121,12 @@ class AudioRecodeHelper
             ? self::recodeWithFfmpeg($ffmpeg, $path, $tmp)
             : self::recodeWithSoxLame($sox, $lame, $path, $tmp);
 
+        // exec() не инвалидирует stat-кеш PHP, а @unlink выше его прогрел
+        // отрицательным значением для $tmp — без clearstatcache is_file()
+        // ниже вернёт cached false, и успешно созданный файл будет признан
+        // отсутствующим. Это давало в логах «recode skipped/failed» при
+        // фактически удачной перекодировке.
+        clearstatcache(true, $tmp);
         if (!$ok || !is_file($tmp) || filesize($tmp) === 0) {
             @unlink($tmp);
             return false;
@@ -178,6 +184,10 @@ class AudioRecodeHelper
             . ' ' . escapeshellarg($tmpWav)
             . ' 2>&1';
         exec($cmd1, $out1, $rc1);
+        // @unlink выше прогревает stat-кеш отрицательным значением;
+        // exec() кеш не инвалидирует — без clearstatcache is_file ниже
+        // вернёт cached false даже после успешного sox.
+        clearstatcache(true, $tmpWav);
         if ($rc1 !== 0 || !is_file($tmpWav) || filesize($tmpWav) === 0) {
             @unlink($tmpWav);
             Util::sysLogMsg('MegafonPBX', "sox decode failed (rc=$rc1): " . implode(' | ', $out1));
