@@ -18,6 +18,7 @@
  */
 use GuzzleHttp\Client;
 use Modules\ModuleMegafonPbx\Lib\AudioRecodeHelper;
+use Modules\ModuleMegafonPbx\Lib\Logger;
 use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
 use MikoPBX\Core\System\Storage;
 use MikoPBX\Core\System\Util;
@@ -25,8 +26,20 @@ use MikoPBX\Core\System\BeanstalkClient;
 use MikoPBX\Core\Workers\WorkerCallEvents;
 require_once 'Globals.php';
 
+try {
+    $logger = new Logger('synchCdr', ModuleMegafonPbx::MODULE_UID);
+} catch (\Throwable $e) {
+    // Logger init может упасть на сломанной FS / правах / недогруженном Phalcon.
+    // Без этого try/catch крон бы тихо умирал каждую минуту без диагностики.
+    Util::sysLogMsg('MegafonPBX', 'Logger init failed: '.$e->getMessage());
+    exit(1);
+}
+AudioRecodeHelper::setLogger($logger);
+$scriptStart = microtime(true);
+
 $settings = ModuleMegafonPbx::findFirst();
 if(!$settings){
+    $logger->writeError('settings row m_ModuleMegafonPbx not found, exit');
     exit(1);
 }
 
@@ -45,7 +58,13 @@ if(empty($settings->offset)){
 }
 $endTime   = date("Ymd\THis\Z");
 
+$logger->writeInfo(sprintf(
+    'start: window=[%s .. %s], host=%s, gap=%s, extField=%s',
+    $startTime, $endTime, $settings->host, $settings->gap, $settings->extField
+));
+
 $client = new Client();
+$tHistory = microtime(true);
 try {
     $response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/history/json', [
         'query' => [
@@ -60,13 +79,36 @@ try {
 } catch (\Throwable $e) {
     // Тихо выходим — крон попробует через минуту. Без try/catch здесь
     // глобальный WhoopsErrorHandler писал в syslog 15-строчный stack trace.
-    Util::sysLogMsg('MegafonPBX', 'history fetch failed: '.$e->getMessage());
+    $logger->writeError(sprintf(
+        'history fetch failed in %.3fs: %s',
+        microtime(true) - $tHistory, $e->getMessage()
+    ));
     exit(1);
 }
-$fsData = json_decode($response->getBody(), true);
+$historyElapsed = microtime(true) - $tHistory;
+$rawHistory = (string)$response->getBody();
+$fsData = json_decode($rawHistory, true);
+// ВАТС МегаФон в пустом окне отдаёт JSON-литерал `null` (а не `[]`),
+// поэтому различаем по json_last_error: код ошибки JSON_ERROR_NONE +
+// $fsData===null — это валидный «пусто», а не parse failure.
+if ($fsData === null && json_last_error() !== JSON_ERROR_NONE) {
+    $logger->writeError(sprintf(
+        'history json decode failed in %.3fs: %s (body head: %.200s)',
+        $historyElapsed, json_last_error_msg(), $rawHistory
+    ));
+    exit(1);
+}
+$fsCount = is_array($fsData) ? count($fsData) : 0;
+$logger->writeInfo(sprintf(
+    'history fetched in %.3fs, cdr_count=%d', $historyElapsed, $fsCount
+));
 if(empty($fsData)){
+    $logger->writeInfo(sprintf(
+        'nothing to import, total=%.3fs', microtime(true) - $scriptStart
+    ));
     exit(0);
 }
+$tUsers = microtime(true);
 try {
     $response = $client->request('GET', 'https://'.$settings->host.'/crmapi/v1/users', [
         'headers' => [
@@ -75,15 +117,37 @@ try {
         'timeout' => 15, 'connect_timeout' => 10, 'read_timeout' => 15
     ]);
 } catch (\Throwable $e) {
-    Util::sysLogMsg('MegafonPBX', 'users fetch failed: '.$e->getMessage());
+    $logger->writeError(sprintf(
+        'users fetch failed in %.3fs: %s',
+        microtime(true) - $tUsers, $e->getMessage()
+    ));
     exit(1);
 }
-$usersPbx = json_decode($response->getBody(), true);
+$usersElapsed = microtime(true) - $tUsers;
+$rawUsers = (string)$response->getBody();
+$usersPbx = json_decode($rawUsers, true);
+// JSON_ERROR_NONE + не-массив (например, null) — это битый/неожиданный ответ
+// API: без users мы всё равно не сможем замапить $cdr['user'] → extension.
+// Лучше упасть и перечитать окно, чем заполнить cdr пустыми src_num/dst_num.
+if (json_last_error() !== JSON_ERROR_NONE
+    || !is_array($usersPbx)
+    || !isset($usersPbx['items'])
+    || !is_array($usersPbx['items'])
+) {
+    $logger->writeError(sprintf(
+        'users response invalid in %.3fs: %s (body head: %.200s)',
+        $usersElapsed, json_last_error_msg(), $rawUsers
+    ));
+    exit(1);
+}
 $users = [];
 foreach ($usersPbx['items'] as $user){
      $users[$user['login']] =  $user[$settings->extField]??$user['telnum'];
 }
-unset($usersPbx, $user);
+unset($usersPbx, $user, $rawUsers);
+$logger->writeInfo(sprintf(
+    'users fetched in %.3fs, users_count=%d', $usersElapsed, count($users)
+));
 $cdrData = [
     'action' => 'insert_cdr',
     'rows' => [],
@@ -106,6 +170,16 @@ foreach (preg_split('/[\r\n,;]+/', (string)$settings->excludedNumbers) as $raw) 
 $last10 = static function ($n) {
     return substr(preg_replace('/\D+/', '', (string)$n), -10);
 };
+if (!empty($excluded)) {
+    $logger->writeInfo('exclude list size: '.count($excluded));
+}
+
+$batchesPublished  = 0;
+$skippedExcluded   = 0;
+$downloadsOk       = 0;
+$downloadsFailed   = 0;
+$recodeFailed      = 0;
+$downloadTimeTotal = 0.0;
 
 $clientBeanstalk  = new BeanstalkClient(WorkerCallEvents::class);
 foreach ($fsData as $index => $cdr){
@@ -121,6 +195,7 @@ foreach ($fsData as $index => $cdr){
         $src_chan = 'PJSIP/megapbx-'.$cdr['uid'];
     }
     if ($excluded && (isset($excluded[$last10($src)]) || isset($excluded[$last10($dst)]))) {
+        $skippedExcluded++;
         continue;
     }
     $duration = (int)$cdr['duration'] + (int)$cdr['wait'];
@@ -129,34 +204,56 @@ foreach ($fsData as $index => $cdr){
     if(!empty($cdr['record'])){
         $filename = Storage::getMonitorDir().$startDate->format("/Y/m/d/H/").basename($cdr['record']);
         Util::mwMkdir(dirname($filename));
+        $tDownload = microtime(true);
         try {
+            // http_errors=false: на 4xx/5xx (404 — запись удалена в ВАТС,
+            // 410 — устарела) НЕ бросаем exception. Тогда такие записи
+            // считаются как "запись не доступна", файла не будет, но строка
+            // CDR всё равно уйдёт в beanstalkd — звонок-то был. haveError
+            // не выставляем, чтобы offset двигался дальше и мы не уходили
+            // в бесконечный цикл попыток для одной протухшей записи.
             $response = $client->request('GET', $cdr['record'], [
                 'headers' => [
                     'X-API-KEY' => $settings->authApiKey,
                 ],
-                'timeout' => 30, 'connect_timeout' => 5, 'read_timeout' => 30
+                'timeout' => 30, 'connect_timeout' => 5, 'read_timeout' => 30,
+                'http_errors' => false,
             ]);
+            $downloadTimeTotal += microtime(true) - $tDownload;
             if($response->getStatusCode() === 200){
                 file_put_contents($filename, $response->getBody()->getContents());
+                $downloadsOk++;
                 // По умолчанию (null/'1') — перекодируем; '0' — явное отключение
                 // через UI. Иначе сразу после обновления модуля на старых
                 // инсталляциях перекодирование выключилось бы, т.к. у уже
                 // существующей строки настроек поля ещё нет.
                 if ($settings->recodeRecording !== '0') {
                     if (!AudioRecodeHelper::recodeToMonoMp3($filename)) {
-                        Util::sysLogMsg(
-                            'MegafonPBX',
+                        $recodeFailed++;
+                        $logger->writeError(
                             "recode skipped/failed for $filename (uniqueid=fs-megapbx-"
                             . $startDate->getTimestamp() . '.' . $cdr['uid'] . ')'
                         );
                     }
                 }
             }else{
+                $downloadsFailed++;
+                $logger->writeError(sprintf(
+                    'record download http=%d for %s', $response->getStatusCode(), $cdr['record']
+                ));
                 $filename = '';
             }
-        }catch (Exception $e){
-            Util::sysLogMsg('MegafonPBX', "Fail download file {$cdr['record']}");
+        }catch (\Throwable $e){
+            // \Throwable, а не Exception: ловим и Error от Guzzle (например,
+            // TypeError при нестабильном TLS-стеке). Иначе утечёт в
+            // WhoopsErrorHandler и засрёт syslog 15-строчным трейсом.
+            $downloadTimeTotal += microtime(true) - $tDownload;
+            $downloadsFailed++;
+            $logger->writeError(sprintf(
+                'record download failed for %s: %s', $cdr['record'], $e->getMessage()
+            ));
             $haveError = true;
+            $filename = '';
         }
     }else{
         $filename = '';
@@ -184,17 +281,35 @@ foreach ($fsData as $index => $cdr){
 
     if(count($cdrData['rows'])>9){
         $clientBeanstalk->publish(json_encode($cdrData),WorkerCallEvents::class);
+        $batchesPublished++;
         $cdrData['rows'] = [];
     }
 
 }
 if(!empty($cdrData['rows'])){
     $clientBeanstalk->publish(json_encode($cdrData),WorkerCallEvents::class);
+    $batchesPublished++;
 }
 if($haveError === false){
     $settings->offset = $endTime;
     $settings->save();
 }
+$logger->writeInfo(sprintf(
+    'done: total=%.3fs, cdr_in=%d, skipped_excluded=%d, downloads_ok=%d in %.3fs, downloads_failed=%d, recode_failed=%d, batches_published=%d, offset_advanced=%s',
+    microtime(true) - $scriptStart,
+    $fsCount,
+    $skippedExcluded,
+    $downloadsOk,
+    $downloadTimeTotal,
+    $downloadsFailed,
+    $recodeFailed,
+    $batchesPublished,
+    $haveError ? 'no' : 'yes'
+));
+// Сбрасываем static reference: на CLI no-op (процесс умирает), но это явный
+// контракт «logger, который я дал, больше не валиден» — на случай, если
+// AudioRecodeHelper когда-нибудь позовут из long-running контекста (FPM).
+AudioRecodeHelper::setLogger(null);
 
 /**
 exit(0);

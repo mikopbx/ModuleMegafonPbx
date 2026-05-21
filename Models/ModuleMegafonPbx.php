@@ -19,6 +19,14 @@ use Phalcon\Mvc\Model\Relation;
 
 class ModuleMegafonPbx extends ModulesModelsBase
 {
+    /**
+     * Уникальный идентификатор модуля. Должен совпадать с moduleUniqueID
+     * в module.json и с именем PSR-4 каталога. Используется как имя
+     * подпапки в Logs/ (см. Lib\Logger), как тег регистрации в
+     * PbxExtensionModules и как алиас в URL REST-эндпоинтов.
+     */
+    public const MODULE_UID = 'ModuleMegafonPbx';
+
     public const EXTENSION_FIELD_EXT = 'ext';
     public const EXTENSION_FIELD_TEL = 'telnum';
 

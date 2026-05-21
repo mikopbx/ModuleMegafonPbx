@@ -38,7 +38,7 @@ use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
  */
 class EventController extends BaseController
 {
-    private const MODULE_ID = 'ModuleMegafonPbx';
+    private const MODULE_ID = ModuleMegafonPbx::MODULE_UID;
 
     private const CTI_CACHE_FILE   = '/tmp/megafon_cti_settings.json';
     private const CTI_CACHE_TTL    = 60;
