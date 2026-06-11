@@ -142,7 +142,11 @@ class AudioRecodeHelper
             return false;
         }
 
-        $tmp = $path . '.recode.tmp.mp3';
+        // Уникальное имя tmp (pid+uniqid): два процесса (sync и reconcile идут
+        // параллельно под разными локами), перекодирующие один и тот же файл,
+        // не должны столкнуться на общем временном пути и затереть его друг у
+        // друга на полпути.
+        $tmp = $path . '.recode.tmp.' . getmypid() . '.' . uniqid('', true) . '.mp3';
         @unlink($tmp);
 
         $ok = !empty($ffmpeg)
@@ -203,7 +207,7 @@ class AudioRecodeHelper
      */
     private static function recodeWithSoxLame(string $sox, string $lame, string $in, string $out): bool
     {
-        $tmpWav = $in . '.recode.tmp.wav';
+        $tmpWav = $in . '.recode.tmp.' . getmypid() . '.' . uniqid('', true) . '.wav';
         @unlink($tmpWav);
 
         $cmd1 = escapeshellarg($sox)

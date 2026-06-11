@@ -28,7 +28,13 @@ class MegafonPbxConf extends ConfigClass
         }
         $workerPath = $this->moduleDir.DIRECTORY_SEPARATOR.'bin'.DIRECTORY_SEPARATOR.'synchCdr.php';
         $phpPath    = Util::which('php');
+        // Основной проход — каждую минуту по скользящему offset (ловит свежие звонки).
         $tasks[]    = "*/1 * * * * {$phpPath} -f {$workerPath} > /dev/null 2> /dev/null\n";
+        // Реконсиляционный проход — раз в 8 минут за последние 24 часа: подхватывает
+        // звонки, которые основной проход пропустил (API ВАТС отдаёт каждую запись
+        // истории лишь один раз). Свой lock-файл, offset не трогает, уже скачанные
+        // записи не перекачивает. Дубли в CDR гасит UNIQUEID на стороне ядра.
+        $tasks[]    = "*/8 * * * * {$phpPath} -f {$workerPath} -- --reconcile > /dev/null 2> /dev/null\n";
     }
 
     public function getPBXCoreRESTAdditionalRoutes(): array
