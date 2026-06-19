@@ -22,11 +22,12 @@
  *
  * Запускается ВРУЧНУЮ; не подключается ни в crontab, ни в воркеры. Зачем:
  * до появления `AudioRecodeHelper` модуль клал на диск оригинальный MP3
- * от ВАТС МегаФон (mono CBR 16 kbps), который не парсится async-эндпоинтом
+ * от ВАТС МегаФон (CBR 16 kbps), который не парсится async-эндпоинтом
  * STT-сервиса (`speech.mikolab.ru` отбивает с `Unexpected EOF`). Этот
  * скрипт проходит по существующим CDR с `from_account = 'fs-megapbx'`,
  * находит файлы с битрейтом ≤ заданного порога и перекодирует их in-place
- * в mono 8 кГц 32 kbps через `AudioRecodeHelper`.
+ * в 8 кГц 32 kbps через `AudioRecodeHelper` (число каналов источника
+ * сохраняется — mono остаётся mono, stereo остаётся stereo).
  *
  * Запуск (на боевой PBX):
  *   php /storage/usbdisk1/mikopbx/custom_modules/ModuleMegafonPbx/bin/recodeRecords.php           # dry-run, всё подряд
@@ -227,7 +228,7 @@ echo "Applying recoding...\n";
 $done   = 0;
 $failed = [];
 foreach ($plan as $i => [$path, $br]) {
-    $ok = AudioRecodeHelper::recodeToMonoMp3($path);
+    $ok = AudioRecodeHelper::recodeMp3($path);
     if ($ok) {
         $done++;
         if ((($i + 1) % 50) === 0) {

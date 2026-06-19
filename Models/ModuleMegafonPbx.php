@@ -103,7 +103,8 @@ class ModuleMegafonPbx extends ModulesModelsBase
 
     /**
      * Перекодировать ли каждую скачанную из CRM API ВАТС МегаФон запись в
-     * стандартный mono 8 кГц 32 kbps. Оригинал МегаФон отдаёт CBR 16 kbps,
+     * 8 кГц 32 kbps (число каналов источника сохраняется — mono остаётся
+     * mono, stereo остаётся stereo). Оригинал МегаФон отдаёт CBR 16 kbps,
      * который не парсится async-эндпоинтом STT-сервиса (`speech.mikolab.ru`)
      * и отбивается ошибкой `Unexpected EOF`. Перекодирование выполняется
      * через ffmpeg или sox+lame (см. `Lib/AudioRecodeHelper`).

@@ -24,11 +24,17 @@ use MikoPBX\Core\System\Util;
 /**
  * Перекодировщик MP3-записей, скачанных из CRM API ВАТС МегаФон.
  *
- * МегаФон отдаёт mono CBR LAME 8 кГц 16 kbps — такие файлы не парсятся
+ * МегаФон отдаёт CBR LAME 8 кГц 16 kbps — такие файлы не парсятся
  * MP3-декодером async-эндпоинта STT-сервиса (`speech.mikolab.ru`),
  * запрос отбивается ошибкой `400 Unexpected EOF`. Перекодирование в
- * mono 8 кГц 32 kbps снимает проблему: содержимое то же, заголовки
+ * 8 кГц 32 kbps снимает проблему: содержимое то же, заголовки
  * валидны, размер растёт ~×2.
+ *
+ * Число каналов источника СОХРАНЯЕТСЯ: если ВАТС отдала стерео (запись
+ * разговора по каналам), на выходе тоже стерео — клиенту это нужно, а
+ * STT-сервис стерео принимает. Раньше файл насильно сводился в mono
+ * (`-ac 1` / `-c 1` / `-m m`), что схлопывало стерео-записи; downmix
+ * убран, ffmpeg/lame определяют раскладку по входу.
  *
  * Класс умеет работать через ffmpeg (предпочтительно) или через
  * пайплайн sox→lame (для legacy-стендов без ffmpeg). Если ни одного
@@ -114,14 +120,15 @@ class AudioRecodeHelper
     }
 
     /**
-     * Перекодировать MP3 in-place в mono 8 кГц 32 kbps.
+     * Перекодировать MP3 in-place в 8 кГц 32 kbps, сохранив число каналов
+     * источника (mono → mono, stereo → stereo).
      *
      * @param string $path Полный путь к MP3-файлу. Файл должен существовать
      *                     и быть доступным на запись (атомарная замена).
      * @return bool true — файл успешно заменён; false — оставлен оригинал
      *              (нет транскодера или ошибка при перекодировании).
      */
-    public static function recodeToMonoMp3(string $path): bool
+    public static function recodeMp3(string $path): bool
     {
         if (!is_file($path) || filesize($path) === 0) {
             return false;
@@ -185,7 +192,7 @@ class AudioRecodeHelper
             . ' -y -loglevel error'
             . ' -i ' . escapeshellarg($in)
             . ' -ar ' . self::TARGET_SAMPLE_RATE
-            . ' -ac 1'
+            // -ac не задаём: число каналов наследуется от источника (сохраняем стерео).
             . ' -codec:a libmp3lame'
             . ' -b:a ' . self::TARGET_BITRATE_KBPS . 'k'
             . ' ' . escapeshellarg($out)
@@ -199,8 +206,8 @@ class AudioRecodeHelper
     }
 
     /**
-     * Перекодирование через sox→lame: sox декодирует MP3 в WAV (mono 8k),
-     * lame жмёт обратно в MP3 32 kbps. Используем промежуточный wav в
+     * Перекодирование через sox→lame: sox декодирует MP3 в WAV (8k, число
+     * каналов от источника), lame жмёт обратно в MP3 32 kbps. Используем промежуточный wav в
      * /tmp вместо пайпа, чтобы не зависеть от proc_open и shell-фич:
      * exec() и popen() в php-cli могут вести себя по-разному на старых
      * сборках (на legacy-стенде PHP старый).
@@ -210,9 +217,10 @@ class AudioRecodeHelper
         $tmpWav = $in . '.recode.tmp.' . getmypid() . '.' . uniqid('', true) . '.wav';
         @unlink($tmpWav);
 
+        // -c не задаём: число каналов наследуется от источника (сохраняем стерео).
         $cmd1 = escapeshellarg($sox)
             . ' ' . escapeshellarg($in)
-            . ' -t wav -r ' . self::TARGET_SAMPLE_RATE . ' -c 1 -b 16'
+            . ' -t wav -r ' . self::TARGET_SAMPLE_RATE . ' -b 16'
             . ' ' . escapeshellarg($tmpWav)
             . ' 2>&1';
         exec($cmd1, $out1, $rc1);
@@ -226,8 +234,9 @@ class AudioRecodeHelper
             return false;
         }
 
+        // -m не задаём: lame выбирает mono/stereo по числу каналов входного WAV.
         $cmd2 = escapeshellarg($lame)
-            . ' --quiet --cbr -b ' . self::TARGET_BITRATE_KBPS . ' -m m'
+            . ' --quiet --cbr -b ' . self::TARGET_BITRATE_KBPS
             . ' ' . escapeshellarg($tmpWav)
             . ' ' . escapeshellarg($out)
             . ' 2>&1';
