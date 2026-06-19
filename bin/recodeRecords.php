@@ -26,8 +26,8 @@
  * STT-сервиса (`speech.mikolab.ru` отбивает с `Unexpected EOF`). Этот
  * скрипт проходит по существующим CDR с `from_account = 'fs-megapbx'`,
  * находит файлы с битрейтом ≤ заданного порога и перекодирует их in-place
- * в 8 кГц 32 kbps через `AudioRecodeHelper` (число каналов источника
- * сохраняется — mono остаётся mono, stereo остаётся stereo).
+ * в валидный CBR 32 kbps через `AudioRecodeHelper` (раскладка источника
+ * сохраняется — число каналов и частота: mono/stereo и 8/16 кГц как есть).
  *
  * Запуск (на боевой PBX):
  *   php /storage/usbdisk1/mikopbx/custom_modules/ModuleMegafonPbx/bin/recodeRecords.php           # dry-run, всё подряд
