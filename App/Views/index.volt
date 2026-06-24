@@ -27,7 +27,7 @@
     </div>
     <div class="ten wide field">
         <div class="ui toggle checkbox">
-            {{ form.render('recodeRecording') }}
+            <input type="checkbox" id="recodeRecording" name="recodeRecording" value="1" {{ recodeRecordingChecked }}>
             <label>{{ t._('module_megafon_recodeRecordingLabel') }}</label>
         </div>
         <div class="ui small message" style="margin-top:.5em;">

@@ -350,7 +350,7 @@ foreach ($fsData as $index => $cdr){
                         // временный файл — его уникальное имя делает уникальным и
                         // внутренний tmp перекодировщика.
                         if ($settings->recodeRecording !== '0') {
-                            if (!AudioRecodeHelper::recodeToMonoMp3($tmpDownload)) {
+                            if (!AudioRecodeHelper::recodeMp3($tmpDownload)) {
                                 $recodeFailed++;
                                 $logger->writeError(
                                     "recode skipped/failed for $filename (uniqueid=$uniqueId)"
