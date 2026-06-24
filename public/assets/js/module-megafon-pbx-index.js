@@ -399,6 +399,17 @@ var ModuleMegafonPbx = {
   cbBeforeSendForm: function cbBeforeSendForm(settings) {
     var result = settings;
     result.data = window[className].$formObj.form('get values');
+    // Semantic UI form('get values') для чекбоксов отдаёт значение,
+    // зависящее от версии (value-атрибут / true / false), из-за чего
+    // состояние тумблера терялось при сохранении. Фиксируем его явно
+    // как '1'/'0' по реальному состоянию чекбокса.
+    window[className].$checkBoxes.each(function (index, obj) {
+      var name = $(obj).find('input[type="checkbox"]').attr('name');
+
+      if (name !== undefined) {
+        result.data[name] = $(obj).checkbox('is checked') ? '1' : '0';
+      }
+    });
     return result;
   },
   /**

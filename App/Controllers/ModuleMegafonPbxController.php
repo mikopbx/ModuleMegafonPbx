@@ -115,6 +115,14 @@ class ModuleMegafonPbxController extends BaseController
         $options['providers']=$providersList;
 
         $this->view->form = new ModuleMegafonPbxForm($settings, $options);
+
+        // Состояние чекбокса recodeRecording рендерим в Volt вручную: Phalcon
+        // Forms Check с привязкой к entity на GET-запросе теряет атрибут
+        // checked (Tag::_inputFieldChecked читает значение только из $_POST/
+        // displayValues, не из entity, и стирает выставленный checked), из-за
+        // чего тумблер всегда показывался выключенным даже при '1' в БД.
+        $this->view->recodeRecordingChecked = ($settings->recodeRecording === '0') ? '' : 'checked';
+
         $this->view->pick("{$this->moduleDir}/App/Views/index");
 
         // Список выбора очередей.
@@ -144,8 +152,13 @@ class ModuleMegafonPbxController extends BaseController
                 case 'checkbox_field':
                 case 'toggle_field':
                 case 'recodeRecording':
+                    // Semantic UI form('get values') сериализует отмеченный
+                    // чекбокс по-разному в зависимости от версии: 'on', '1',
+                    // 'true' или булево true. Принимаем любой truthy-вариант,
+                    // иначе галочка после сохранения всегда сбрасывалась в '0'.
                     if (array_key_exists($key, $data)) {
-                        $record->$key = ($data[$key] === 'on' || $data[$key] === '1') ? '1' : '0';
+                        $truthy = ['on', '1', 1, 'true', true, 'checked', 'yes'];
+                        $record->$key = in_array($data[$key], $truthy, true) ? '1' : '0';
                     } else {
                         $record->$key = '0';
                     }
