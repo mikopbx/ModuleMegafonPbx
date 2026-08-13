@@ -54,7 +54,7 @@ class GetController extends BaseController
                     if(!str_starts_with($data['linkedid'],'fs-megapbx-')){
                         continue;
                     }
-                    $xml_output .= "<history_record no=\"$data[linkedid]\" entire_id=\"$data[linkedid]\" line=\"$data[did]\">".PHP_EOL;
+                    $xml_output .= "<history_record no=\"$data[linkedid]\" entire_id=\"$data[linkedid]\" line=\"$data[did]\" line_number=\"$data[did]\">".PHP_EOL;
                     $detailAttr = [
                         'call_id' => $data['linkedid'],
                         'status'  => $data['disposition'] === 'ANSWERED'?'ANSWER':'CANCEL',

@@ -18,6 +18,7 @@
  */
 use GuzzleHttp\Client;
 use Modules\ModuleMegafonPbx\Lib\AudioRecodeHelper;
+use Modules\ModuleMegafonPbx\Lib\CdrTimeline;
 use Modules\ModuleMegafonPbx\Lib\Logger;
 use Modules\ModuleMegafonPbx\Models\ModuleMegafonPbx;
 use MikoPBX\Core\System\Storage;
@@ -276,9 +277,10 @@ foreach ($fsData as $index => $cdr){
     }
     $duration = (int)$cdr['duration'] + (int)$cdr['wait'];
     $startDate  = (new DateTime($cdr['start']))->modify($settings->gap.' hour');
-    // UNIQUEID считаем здесь, ДО мутаций $startDate ниже (answer/endtime его
-    // двигают). Та же формула в обоих режимах → один и тот же ключ для одного
-    // звонка, поэтому seen-кэш и дедуп ядра согласованы.
+    $timeline = CdrTimeline::fromStart($startDate, (int)$cdr['wait'], $duration);
+    // Та же формула UNIQUEID в обоих режимах → один и тот же ключ для одного
+    // звонка, поэтому seen-кэш и дедуп ядра согласованы. Timeline использует
+    // клоны даты и не сдвигает $startDate повторно.
     $uniqueId = 'fs-megapbx-'.$startDate->getTimestamp().'.'.$cdr['uid'];
 
     // Уже публиковали этот звонок ранее — полный no-op: ни скачивания, ни
@@ -397,9 +399,9 @@ foreach ($fsData as $index => $cdr){
     $cdrData['rows'][] = [
         'UNIQUEID'  => $uniqueId,
         'linkedid'  => $uniqueId,
-        'start'     => $startDate->format("Y-m-d H:i:s.u"),
-        'answer'    => $startDate->modify('+'.(int)$cdr['wait'].' seconds')->format("Y-m-d H:i:s.u"),
-        'endtime'   => $startDate->modify('+'.$duration.' seconds')->format("Y-m-d H:i:s.u"),
+        'start'     => $timeline['start'],
+        'answer'    => $timeline['answer'],
+        'endtime'   => $timeline['endtime'],
         "did"       => $cdr['diversion'],
         "src_num"   => $src,
         "src_chan"  => $src_chan,
